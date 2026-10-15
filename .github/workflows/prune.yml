@@ -1,0 +1,36 @@
+name: Prune diagnostica
+
+# Limita il danno di un abuso del diagToken embedded nell'APK:
+# chiunque decompili può scrivere in questa repo, quindi ogni notte
+# si tengono solo gli ultimi 400 report e si cancellano file >200 KB.
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pota report vecchi/oversize
+        run: |
+          shopt -s nullglob
+          for f in diag/*.md; do
+            if [ "$(stat -c%s "$f")" -gt 204800 ]; then echo "rimosso oversize: $f"; rm -f "$f"; fi
+          done
+          files=(diag/*.md)
+          total=${#files[@]}
+          keep=400
+          if [ "$total" -gt "$keep" ]; then
+            ls -1tr diag/*.md | head -n $((total - keep)) | xargs rm -f
+            echo "rimossi $((total - keep)) report più vecchi"
+          fi
+          git config user.name "prune-bot"
+          git config user.email "prune@mybody.local"
+          git add -A diag/ 2>/dev/null || true
+          git commit -m "prune diagnostica automatico" || echo "niente da potare"
+          git push
